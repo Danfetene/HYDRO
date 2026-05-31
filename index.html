@@ -808,38 +808,53 @@ function hbEstimateBPM(samples) {
   var hp   = smooth(detrended, winHigh);
   var band = lp.map(function(v,i){ return v - hp[i]; });
 
-  // 4. Autocorrelation to find the dominant period
-  // Search lag range = 35–200 BPM → in samples
-  var lagMin = Math.round(fps * 60/200); // max BPM → min lag
-  var lagMax = Math.round(fps * 60/35);  // min BPM → max lag
-  lagMin = Math.max(2, lagMin);
-  lagMax = Math.min(band.length - 1, lagMax);
+  // 4. Autocorrelation — search 45–180 BPM range
+  var lagMin = Math.max(2, Math.round(fps * 60/180));
+  var lagMax = Math.min(band.length - 1, Math.round(fps * 60/45));
   if(lagMin >= lagMax) return 0;
 
-  var bestLag = -1, bestCorr = -Infinity;
-  for(var lag=lagMin; lag<=lagMax; lag++){
-    var corr=0, cnt=0;
-    for(var i=0; i<band.length-lag; i++){
-      corr += band[i] * band[i+lag];
-      cnt++;
-    }
-    corr /= cnt;
-    if(corr > bestCorr){ bestCorr=corr; bestLag=lag; }
-  }
-  if(bestLag < 1 || bestCorr <= 0) return 0;
-
-  // 5. Refine: find local max near bestLag (±2 samples)
-  var refined = bestLag;
-  for(var lag=Math.max(lagMin,bestLag-2); lag<=Math.min(lagMax,bestLag+2); lag++){
-    var corr=0,cnt=0;
-    for(var i=0;i<band.length-lag;i++){corr+=band[i]*band[i+lag];cnt++;}
-    corr/=cnt;
-    if(corr>bestCorr){bestCorr=corr;refined=lag;}
+  function autoCorr(arr, lag){
+    var s=0, cnt=0;
+    for(var i=0;i<arr.length-lag;i++){ s+=arr[i]*arr[i+lag]; cnt++; }
+    return cnt>0 ? s/cnt : 0;
   }
 
-  var periodMs = (refined / fps) * 1000;
+  // Find global best lag
+  var bestLag = lagMin, bestCorr = autoCorr(band, lagMin);
+  for(var lag=lagMin+1; lag<=lagMax; lag++){
+    var c = autoCorr(band, lag);
+    if(c > bestCorr){ bestCorr=c; bestLag=lag; }
+  }
+  if(bestCorr <= 0) return 0;
+
+  // ── Octave error fix ──
+  // If bestLag is large (giving low BPM like 42), check if half/third
+  // the lag also has strong correlation — if so, the true period is shorter.
+  var finalLag = bestLag;
+  var halfLag = Math.round(bestLag / 2);
+  if(halfLag >= lagMin){
+    var halfCorr = autoCorr(band, halfLag);
+    if(halfCorr >= 0.75 * bestCorr) finalLag = halfLag;
+  }
+  var thirdLag = Math.round(bestLag / 3);
+  if(thirdLag >= lagMin){
+    var thirdCorr = autoCorr(band, thirdLag);
+    if(thirdCorr >= 0.80 * bestCorr) finalLag = thirdLag;
+  }
+
+  // 5. Sub-sample refinement: ±2 samples around finalLag
+  var refinedLag = finalLag;
+  var refinedCorr = autoCorr(band, finalLag);
+  for(var dl=-2; dl<=2; dl++){
+    var tl = finalLag + dl;
+    if(tl < lagMin || tl > lagMax) continue;
+    var tc = autoCorr(band, tl);
+    if(tc > refinedCorr){ refinedCorr=tc; refinedLag=tl; }
+  }
+
+  var periodMs = (refinedLag / fps) * 1000;
   var bpm = Math.round(60000 / periodMs);
-  return (bpm >= 38 && bpm <= 200) ? bpm : 0;
+  return (bpm >= 45 && bpm <= 180) ? bpm : 0;
 }
 
 function hbDrawWave() {
