@@ -646,7 +646,7 @@ function updateSummary(){var c=document.getElementById('t-count');var w=document
 function clearHistory(){workouts=[];renderHistory();updateSummary();}
 
 /* ════════════════════════════════════
-   HEARTBEAT TRACKER
+   HEARTBEAT TRACKER — Fixed v2
 ════════════════════════════════════ */
 var hbStream = null;
 var hbMeasuring = false;
@@ -656,32 +656,45 @@ var hbWaveData = [];
 var hbStartTime = null;
 var hbAnimFrame = null;
 var hbHistory = [];
-var HB_DURATION = 30000;
-var HB_SAMPLE_MS = 33;
+var HB_DURATION = 30000;   // 30 sec total
+var HB_SAMPLE_MS = 40;     // ~25 fps sampling
 
 var hbWaveCanvas = document.getElementById('hbWaveCanvas');
 var hbWaveCtx = hbWaveCanvas.getContext('2d');
 
 function hbResizeWave() {
-  hbWaveCanvas.width = hbWaveCanvas.offsetWidth * (window.devicePixelRatio||1);
+  hbWaveCanvas.width  = hbWaveCanvas.offsetWidth  * (window.devicePixelRatio||1);
   hbWaveCanvas.height = hbWaveCanvas.offsetHeight * (window.devicePixelRatio||1);
 }
 hbResizeWave();
+window.addEventListener('resize', hbResizeWave);
 
 function hbShowErr(msg) { var e=document.getElementById('hbErr'); e.textContent=msg; e.style.display='block'; }
 function hbHideErr()    { document.getElementById('hbErr').style.display='none'; }
 
 async function hbStart() {
   hbHideErr();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    hbShowErr('Camera not supported in this browser / WebView.'); return;
+  }
   try {
+    // Request rear camera
     hbStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode:'environment', width:{ideal:320}, height:{ideal:240}, frameRate:{ideal:30} }
+      video: { facingMode: { ideal:'environment' }, width:{ideal:160}, height:{ideal:120}, frameRate:{ideal:30} }
     });
+
+    // Try to turn on torch (flashlight) — works on Android Chrome & Telegram WebView
     var track = hbStream.getVideoTracks()[0];
-    try { await track.applyConstraints({ advanced:[{torch:true}] }); } catch(e){}
+    var caps = track.getCapabilities ? track.getCapabilities() : {};
+    if(caps.torch) {
+      try { await track.applyConstraints({ advanced:[{ torch:true }] }); } catch(e){}
+    }
+
     var vid = document.getElementById('hbVideo');
     vid.srcObject = hbStream;
-    await vid.play();
+    vid.onloadedmetadata = function(){ vid.play(); };
+    // Also try play() directly for WebViews that don't fire onloadedmetadata
+    try { await vid.play(); } catch(e){}
 
     hbRedValues=[]; hbWaveData=[]; hbStartTime=Date.now(); hbMeasuring=true;
     document.getElementById('hbStartBtn').disabled=true;
@@ -690,108 +703,183 @@ async function hbStart() {
     document.getElementById('hbBpmNum').classList.add('active');
     document.getElementById('hbBpmNum').textContent='--';
     document.getElementById('hbZoneBadge').style.display='none';
-    hbSetStatus('Measuring… keep your finger still','measuring');
+    hbSetStatus('Hold finger over lens… detecting pulse','measuring');
 
     hbSampleInterval = setInterval(hbSampleFrame, HB_SAMPLE_MS);
     hbAnimFrame = requestAnimationFrame(hbDrawWave);
     setTimeout(function(){ if(hbMeasuring) hbFinalize(); }, HB_DURATION);
+
   } catch(e) {
-    hbShowErr('Camera access denied. Please allow camera permission and try again.');
+    var msg = 'Camera access denied.';
+    if(e && e.name === 'NotFoundError') msg = 'No rear camera found on this device.';
+    else if(e && e.name === 'NotAllowedError') msg = 'Camera permission denied. Allow it in settings and try again.';
+    hbShowErr(msg);
   }
 }
 
 function hbSampleFrame() {
   if(!hbMeasuring) return;
   var elapsed = Date.now() - hbStartTime;
-  var progress = Math.min(elapsed/HB_DURATION,1);
+  var progress = Math.min(elapsed / HB_DURATION, 1);
   document.getElementById('hbProgressCircle').style.strokeDashoffset = 534*(1-progress);
 
-  var canvas = document.getElementById('hbCaptureCanvas');
-  var ctx = canvas.getContext('2d');
   var vid = document.getElementById('hbVideo');
-  ctx.drawImage(vid,0,0,8,8);
-  var px = ctx.getImageData(0,0,8,8).data;
-  var total=0;
-  for(var i=0;i<px.length;i+=4) total+=px[i];
-  var avg=total/64;
-  hbRedValues.push({t:elapsed,v:avg});
-  hbWaveData.push(avg);
-  if(hbWaveData.length>200) hbWaveData.shift();
+  if(vid.readyState < 2) return; // video not ready yet
 
-  if(elapsed>8000&&hbRedValues.length>50){
-    var bpm=hbEstimateBPM(hbRedValues);
-    if(bpm>0){
-      document.getElementById('hbBpmNum').textContent=bpm;
-      hbSetStatus('Estimating… keep still','measuring');
+  // Sample a larger 16×16 area for better signal quality
+  var canvas = document.getElementById('hbCaptureCanvas');
+  canvas.width = 16; canvas.height = 16;
+  var ctx = canvas.getContext('2d');
+  try { ctx.drawImage(vid, 0, 0, 16, 16); } catch(e){ return; }
+  var px = ctx.getImageData(0, 0, 16, 16).data;
+
+  // Average the RED channel only (index 0 of every 4 bytes)
+  var totalR=0, totalG=0, count=0;
+  for(var i=0; i<px.length; i+=4){ totalR+=px[i]; totalG+=px[i+1]; count++; }
+  var avgR = totalR/count;
+  var avgG = totalG/count;
+
+  // Check if finger is actually covering lens:
+  // When covered + torch ON → RED is very high (>180), GREEN is low
+  var fingerDetected = (avgR > 100 && avgR > avgG * 1.5);
+
+  hbRedValues.push({ t:elapsed, v:avgR });
+  hbWaveData.push(avgR);
+  if(hbWaveData.length > 250) hbWaveData.shift();
+
+  // Live status feedback
+  if(elapsed < 3000) {
+    if(!fingerDetected) {
+      hbSetStatus('⚠ Cover the lens fully with your fingertip','measuring');
+    } else {
+      hbSetStatus('✓ Finger detected — keep still…','measuring');
+    }
+  } else if(elapsed > 6000 && hbRedValues.length > 60) {
+    var bpm = hbEstimateBPM(hbRedValues);
+    if(bpm > 0) {
+      document.getElementById('hbBpmNum').textContent = bpm;
+      hbSetStatus('Estimating BPM… almost done','measuring');
+    } else if(!fingerDetected) {
+      hbSetStatus('⚠ Keep your finger on the lens!','measuring');
     }
   }
 }
 
 function hbEstimateBPM(samples) {
-  if(samples.length<30) return 0;
-  var vals=samples.map(function(s){return s.v;});
-  var w=5, smoothed=[];
-  for(var i=w;i<vals.length-w;i++){
+  if(samples.length < 40) return 0;
+  var vals = samples.map(function(s){ return s.v; });
+
+  // Check signal variance — if flat, finger not placed correctly
+  var mean = vals.reduce(function(a,b){return a+b;},0)/vals.length;
+  var variance = vals.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/vals.length;
+  if(variance < 0.5) return 0; // signal too flat = no pulse detected
+
+  // Smooth with a moving average (window = 7)
+  var w = 7, smoothed = [];
+  for(var i=w; i<vals.length-w; i++){
     var sum=0;
-    for(var j=-w;j<=w;j++) sum+=vals[i+j];
+    for(var j=-w; j<=w; j++) sum += vals[i+j];
     smoothed.push(sum/(2*w+1));
   }
-  var mn=Math.min.apply(null,smoothed), mx=Math.max.apply(null,smoothed);
-  var threshold=(mx-mn)*0.45+mn;
+  if(smoothed.length < 20) return 0;
+
+  var mn = Math.min.apply(null,smoothed);
+  var mx = Math.max.apply(null,smoothed);
+  if(mx - mn < 0.3) return 0; // signal amplitude too small
+
+  // Adaptive threshold at 55% of the range
+  var threshold = (mx - mn) * 0.55 + mn;
+
+  // Minimum gap between peaks: ~300ms apart = max ~200 BPM
+  // At HB_SAMPLE_MS=40ms, 300ms = 7.5 frames → minGap = 7
+  var minGap = Math.round(300 / HB_SAMPLE_MS);
+
   var peaks=[], inPeak=false, peakStart=-1;
-  for(var i=1;i<smoothed.length-1;i++){
-    if(smoothed[i]>threshold&&!inPeak){inPeak=true;peakStart=i;}
-    else if(smoothed[i]<=threshold&&inPeak){
+  for(var i=1; i<smoothed.length-1; i++){
+    if(smoothed[i] > threshold && !inPeak){ inPeak=true; peakStart=i; }
+    else if(smoothed[i] <= threshold && inPeak){
       inPeak=false;
-      var mid=Math.round((peakStart+i)/2);
-      if(peaks.length===0||mid-peaks[peaks.length-1]>10) peaks.push(mid);
+      var mid = Math.round((peakStart+i)/2);
+      if(peaks.length===0 || mid-peaks[peaks.length-1] > minGap) peaks.push(mid);
     }
   }
-  if(peaks.length<3) return 0;
-  var intervals=[];
-  for(var i=1;i<peaks.length;i++){
-    var a=samples[peaks[i]+w], b=samples[peaks[i-1]+w];
-    if(a&&b){var dt=a.t-b.t; if(dt>300&&dt<1500) intervals.push(dt);}
+  if(peaks.length < 3) return 0;
+
+  // Calculate inter-peak intervals in milliseconds
+  var intervals = [];
+  for(var i=1; i<peaks.length; i++){
+    var idxA = peaks[i]   + w;
+    var idxB = peaks[i-1] + w;
+    if(samples[idxA] && samples[idxB]){
+      var dt = samples[idxA].t - samples[idxB].t;
+      // Accept intervals matching 35–200 BPM range
+      if(dt > 300 && dt < 1714) intervals.push(dt);
+    }
   }
-  if(intervals.length<2) return 0;
-  var avgInt=intervals.reduce(function(a,b){return a+b;},0)/intervals.length;
-  var bpm=Math.round(60000/avgInt);
-  return (bpm>=40&&bpm<=200)?bpm:0;
+  if(intervals.length < 2) return 0;
+
+  // Remove outliers: keep intervals within 30% of median
+  intervals.sort(function(a,b){return a-b;});
+  var median = intervals[Math.floor(intervals.length/2)];
+  var clean = intervals.filter(function(d){ return Math.abs(d-median)/median < 0.30; });
+  if(clean.length < 2) return 0;
+
+  var avgInt = clean.reduce(function(a,b){return a+b;},0)/clean.length;
+  var bpm = Math.round(60000/avgInt);
+  return (bpm >= 35 && bpm <= 200) ? bpm : 0;
 }
 
 function hbDrawWave() {
   if(!hbMeasuring) return;
-  var W=hbWaveCanvas.offsetWidth, H=hbWaveCanvas.offsetHeight;
-  hbWaveCtx.clearRect(0,0,hbWaveCanvas.width,hbWaveCanvas.height);
-  var scl=window.devicePixelRatio||1;
-  if(hbWaveData.length<2){hbAnimFrame=requestAnimationFrame(hbDrawWave);return;}
-  var mn=Math.min.apply(null,hbWaveData), mx=Math.max.apply(null,hbWaveData), rng=mx-mn||1;
-  hbWaveCtx.beginPath();
-  hbWaveCtx.strokeStyle='rgba(255,77,109,0.85)';
-  hbWaveCtx.lineWidth=1.5*scl;
-  hbWaveCtx.lineJoin='round';
-  for(var i=0;i<hbWaveData.length;i++){
-    var x=(i/(hbWaveData.length-1))*W*scl;
-    var y=(H-(((hbWaveData[i]-mn)/rng)*H*0.82+H*0.09))*scl;
-    i===0?hbWaveCtx.moveTo(x,y):hbWaveCtx.lineTo(x,y);
-  }
-  hbWaveCtx.stroke();
+  var W = hbWaveCanvas.offsetWidth;
+  var H = hbWaveCanvas.offsetHeight;
+  var scl = window.devicePixelRatio||1;
+  hbWaveCtx.clearRect(0, 0, hbWaveCanvas.width, hbWaveCanvas.height);
+
+  if(hbWaveData.length < 2){ hbAnimFrame=requestAnimationFrame(hbDrawWave); return; }
+
+  var mn = Math.min.apply(null,hbWaveData);
+  var mx = Math.max.apply(null,hbWaveData);
+  var rng = mx - mn || 1;
+
+  // Grid lines
   hbWaveCtx.strokeStyle='rgba(255,255,255,0.05)';
   hbWaveCtx.lineWidth=0.5*scl;
-  for(var i=1;i<4;i++){hbWaveCtx.beginPath();hbWaveCtx.moveTo(0,(i/4)*H*scl);hbWaveCtx.lineTo(W*scl,(i/4)*H*scl);hbWaveCtx.stroke();}
-  hbAnimFrame=requestAnimationFrame(hbDrawWave);
+  for(var i=1;i<4;i++){
+    hbWaveCtx.beginPath();
+    hbWaveCtx.moveTo(0,(i/4)*H*scl);
+    hbWaveCtx.lineTo(W*scl,(i/4)*H*scl);
+    hbWaveCtx.stroke();
+  }
+
+  // Pulse wave — glow effect
+  hbWaveCtx.shadowColor='rgba(255,77,109,0.5)';
+  hbWaveCtx.shadowBlur=6*scl;
+  hbWaveCtx.beginPath();
+  hbWaveCtx.strokeStyle='rgba(255,77,109,0.9)';
+  hbWaveCtx.lineWidth=2*scl;
+  hbWaveCtx.lineJoin='round';
+  for(var i=0;i<hbWaveData.length;i++){
+    var x = (i/(hbWaveData.length-1))*W*scl;
+    var y = (H - (((hbWaveData[i]-mn)/rng)*H*0.80 + H*0.10))*scl;
+    i===0 ? hbWaveCtx.moveTo(x,y) : hbWaveCtx.lineTo(x,y);
+  }
+  hbWaveCtx.stroke();
+  hbWaveCtx.shadowBlur=0;
+
+  hbAnimFrame = requestAnimationFrame(hbDrawWave);
 }
 
 function hbStop() {
-  if(hbRedValues.length>40) hbFinalize();
+  if(hbRedValues.length > 40) hbFinalize();
   else { hbCleanup(); hbSetStatus('Measurement cancelled',''); }
 }
 
 function hbFinalize() {
-  var bpm=hbEstimateBPM(hbRedValues);
+  var bpm = hbEstimateBPM(hbRedValues);
   hbCleanup();
   document.getElementById('hbProgressCircle').style.strokeDashoffset=534;
-  if(bpm>0){
+  if(bpm > 0){
     document.getElementById('hbBpmNum').textContent=bpm;
     document.getElementById('hbBpmNum').classList.remove('active');
     hbSetStatus('Measurement complete ✓','ok');
@@ -801,7 +889,7 @@ function hbFinalize() {
     document.getElementById('hbBpmNum').textContent='--';
     document.getElementById('hbBpmNum').classList.remove('active');
     hbSetStatus('Could not detect pulse — try again','');
-    hbShowErr('Keep your fingertip fully covering the lens. Stay very still.');
+    hbShowErr('Tips: ① Cover the lens completely with your fingertip ② Press gently — not too hard ③ Stay very still ④ Make sure the flashlight turns on (bright red glow)');
   }
 }
 
@@ -809,7 +897,7 @@ function hbCleanup() {
   hbMeasuring=false;
   clearInterval(hbSampleInterval);
   cancelAnimationFrame(hbAnimFrame);
-  if(hbStream){hbStream.getTracks().forEach(function(t){t.stop();});hbStream=null;}
+  if(hbStream){ hbStream.getTracks().forEach(function(t){ t.stop(); }); hbStream=null; }
   document.getElementById('hbVideo').srcObject=null;
   document.getElementById('hbStartBtn').disabled=false;
   document.getElementById('hbStopBtn').disabled=true;
@@ -831,10 +919,10 @@ function hbShowZone(bpm) {
 }
 
 function hbGetZone(bpm) {
-  if(bpm<60) return {label:'Resting',icon:'😌',cls:'zone-rest'};
-  if(bpm<100) return {label:'Normal',icon:'💚',cls:'zone-normal'};
-  if(bpm<140) return {label:'Elevated',icon:'⚡',cls:'zone-elevated'};
-  return {label:'High',icon:'🔥',cls:'zone-high'};
+  if(bpm<60)  return {label:'Resting',  icon:'😌',cls:'zone-rest'};
+  if(bpm<100) return {label:'Normal',   icon:'💚',cls:'zone-normal'};
+  if(bpm<140) return {label:'Elevated', icon:'⚡',cls:'zone-elevated'};
+  return               {label:'High',     icon:'🔥',cls:'zone-high'};
 }
 
 function hbSaveHistory(bpm) {
