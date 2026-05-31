@@ -124,12 +124,12 @@
   .hb-ring-wrap {
     display: flex;
     justify-content: center;
-    margin: 8px 0 16px;
+    margin: 6px 0 10px;
   }
   .hb-ring {
     position: relative;
-    width: 170px;
-    height: 170px;
+    width: 100px;
+    height: 100px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -148,8 +148,8 @@
   }
   @keyframes hbRingPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.05);opacity:0.65} }
   .hb-viewport {
-    width: 150px;
-    height: 150px;
+    width: 88px;
+    height: 88px;
     border-radius: 50%;
     overflow: hidden;
     background: var(--surface2);
@@ -157,8 +157,8 @@
   }
   #hbVideo { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); }
   .hb-overlay { position: absolute; inset: 0; border-radius: 50%; background: rgba(0,0,0,0.12); pointer-events: none; }
-  .hb-progress-svg { position: absolute; inset: -4px; width: 178px; height: 178px; transform: rotate(-90deg); pointer-events: none; }
-  .hb-progress-svg circle { fill: none; stroke: var(--danger); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 534; stroke-dashoffset: 534; transition: stroke-dashoffset 0.5s linear; opacity: 0.75; }
+  .hb-progress-svg { position: absolute; inset: -4px; width: 108px; height: 108px; transform: rotate(-90deg); pointer-events: none; }
+  .hb-progress-svg circle { fill: none; stroke: var(--danger); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 314; stroke-dashoffset: 314; transition: stroke-dashoffset 0.5s linear; opacity: 0.75; }
 
   .hb-bpm-row {
     display: flex;
@@ -169,7 +169,7 @@
   }
   .hb-bpm-number {
     font-family: 'DM Serif Display', serif;
-    font-size: 72px;
+    font-size: 56px;
     line-height: 1;
     color: var(--text);
     transition: color 0.4s;
@@ -406,7 +406,7 @@
       <div class="hb-ring-wrap">
         <div class="hb-ring">
           <svg class="hb-progress-svg" id="hbProgressSvg">
-            <circle id="hbProgressCircle" cx="89" cy="89" r="85"/>
+            <circle id="hbProgressCircle" cx="54" cy="54" r="50"/>
           </svg>
           <div class="hb-ring-border" id="hbRingBorder"></div>
           <div class="hb-viewport">
@@ -460,20 +460,6 @@
         <div onclick="hbClearHistory()" style="font-size:11px;color:var(--text3);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:8px;">Clear</div>
       </div>
       <div id="hbHistList"></div>
-    </div>
-
-    <!-- Heart + hydration insight -->
-    <div class="insight">
-      <span class="insight-icon">💧</span>
-      <p>Your heart rate and hydration are closely linked. <strong>Dehydration raises resting heart rate</strong> by 5–10 BPM. After exercise, drinking magnesium-rich water like Ambo helps your heart recover faster.</p>
-    </div>
-
-    <div class="card" style="padding:12px">
-      <div class="qa-wrap">
-        <div class="qa-btn" onclick="ask('How does dehydration affect heart rate and what should I drink to recover?')">Heart rate & hydration 💬</div>
-        <div class="qa-btn" onclick="ask('What is a healthy resting heart rate and how can water and minerals help?')">Healthy heart rate 💬</div>
-        <div class="qa-btn" onclick="ask('Which minerals in water are best for heart health?')">Minerals for heart 💬</div>
-      </div>
     </div>
 
   </div>
@@ -721,7 +707,7 @@ function hbSampleFrame() {
   if(!hbMeasuring) return;
   var elapsed = Date.now() - hbStartTime;
   var progress = Math.min(elapsed / HB_DURATION, 1);
-  document.getElementById('hbProgressCircle').style.strokeDashoffset = 534*(1-progress);
+  document.getElementById('hbProgressCircle').style.strokeDashoffset = 314*(1-progress);
 
   var vid = document.getElementById('hbVideo');
   if(vid.readyState < 2) return; // video not ready yet
@@ -892,7 +878,7 @@ function hbStop() {
 function hbFinalize() {
   var bpm = hbEstimateBPM(hbRedValues);
   hbCleanup();
-  document.getElementById('hbProgressCircle').style.strokeDashoffset=534;
+  document.getElementById('hbProgressCircle').style.strokeDashoffset=314;
   if(bpm > 0){
     document.getElementById('hbBpmNum').textContent=bpm;
     document.getElementById('hbBpmNum').classList.remove('active');
