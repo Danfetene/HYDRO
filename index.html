@@ -745,88 +745,101 @@ function hbSampleFrame() {
 
   hbRedValues.push({ t:elapsed, v:avgR });
   hbWaveData.push(avgR);
-  if(hbWaveData.length > 250) hbWaveData.shift();
+  if(hbWaveData.length > 300) hbWaveData.shift();
 
   // Live status feedback
   if(elapsed < 3000) {
     if(!fingerDetected) {
       hbSetStatus('⚠ Cover the lens fully with your fingertip','measuring');
     } else {
-      hbSetStatus('✓ Finger detected — keep still…','measuring');
+      hbSetStatus('✓ Finger detected — keep very still…','measuring');
     }
-  } else if(elapsed > 6000 && hbRedValues.length > 60) {
+  } else if(elapsed > 7000 && hbRedValues.length > 80) {
     var bpm = hbEstimateBPM(hbRedValues);
     if(bpm > 0) {
       document.getElementById('hbBpmNum').textContent = bpm;
-      hbSetStatus('Estimating BPM… almost done','measuring');
+      hbSetStatus('Reading pulse… ' + Math.round(elapsed/1000) + 's / 30s','measuring');
     } else if(!fingerDetected) {
       hbSetStatus('⚠ Keep your finger on the lens!','measuring');
+    } else {
+      hbSetStatus('Analysing signal… keep still','measuring');
     }
   }
 }
 
+/* ── BPM Engine: detrend → bandpass → autocorrelation ── */
 function hbEstimateBPM(samples) {
-  if(samples.length < 40) return 0;
+  if(samples.length < 60) return 0;
   var vals = samples.map(function(s){ return s.v; });
+  var n = vals.length;
 
-  // Check signal variance — if flat, finger not placed correctly
-  var mean = vals.reduce(function(a,b){return a+b;},0)/vals.length;
-  var variance = vals.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/vals.length;
-  if(variance < 0.5) return 0; // signal too flat = no pulse detected
+  // 1. Check variance — flat signal = finger not covering
+  var mean = vals.reduce(function(a,b){return a+b;},0)/n;
+  var variance = vals.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/n;
+  if(variance < 0.08) return 0;
 
-  // Smooth with a moving average (window = 7)
-  var w = 7, smoothed = [];
-  for(var i=w; i<vals.length-w; i++){
-    var sum=0;
-    for(var j=-w; j<=w; j++) sum += vals[i+j];
-    smoothed.push(sum/(2*w+1));
+  // 2. Detrend: subtract a slow moving average to remove brightness drift
+  var trend = [], tWin = Math.round(n * 0.4);
+  for(var i=0; i<n; i++){
+    var s = Math.max(0,i-tWin), e = Math.min(n-1,i+tWin);
+    var sum=0; for(var j=s;j<=e;j++) sum+=vals[j];
+    trend.push(sum/(e-s+1));
   }
-  if(smoothed.length < 20) return 0;
+  var detrended = vals.map(function(v,i){ return v - trend[i]; });
 
-  var mn = Math.min.apply(null,smoothed);
-  var mx = Math.max.apply(null,smoothed);
-  if(mx - mn < 0.3) return 0; // signal amplitude too small
-
-  // Adaptive threshold at 55% of the range
-  var threshold = (mx - mn) * 0.55 + mn;
-
-  // Minimum gap between peaks: ~300ms apart = max ~200 BPM
-  // At HB_SAMPLE_MS=40ms, 300ms = 7.5 frames → minGap = 7
-  var minGap = Math.round(300 / HB_SAMPLE_MS);
-
-  var peaks=[], inPeak=false, peakStart=-1;
-  for(var i=1; i<smoothed.length-1; i++){
-    if(smoothed[i] > threshold && !inPeak){ inPeak=true; peakStart=i; }
-    else if(smoothed[i] <= threshold && inPeak){
-      inPeak=false;
-      var mid = Math.round((peakStart+i)/2);
-      if(peaks.length===0 || mid-peaks[peaks.length-1] > minGap) peaks.push(mid);
+  // 3. Bandpass: keep only 40–200 BPM frequencies
+  // Estimate sample rate from timestamps
+  var totalMs = samples[n-1].t - samples[0].t;
+  var fps = (n-1) / (totalMs/1000); // samples per second
+  // Low-pass (smooth) then subtract another smooth = bandpass
+  function smooth(arr, win){
+    var out=[];
+    for(var i=0;i<arr.length;i++){
+      var s=Math.max(0,i-win),e=Math.min(arr.length-1,i+win),sum=0;
+      for(var j=s;j<=e;j++) sum+=arr[j];
+      out.push(sum/(e-s+1));
     }
+    return out;
   }
-  if(peaks.length < 3) return 0;
+  // winLow keeps up to ~3 Hz (180 BPM), winHigh removes below ~0.5 Hz (30 BPM)
+  var winLow  = Math.max(1, Math.round(fps / 6));   // low-pass
+  var winHigh = Math.max(1, Math.round(fps / 1.2)); // trend removal
+  var lp   = smooth(detrended, winLow);
+  var hp   = smooth(detrended, winHigh);
+  var band = lp.map(function(v,i){ return v - hp[i]; });
 
-  // Calculate inter-peak intervals in milliseconds
-  var intervals = [];
-  for(var i=1; i<peaks.length; i++){
-    var idxA = peaks[i]   + w;
-    var idxB = peaks[i-1] + w;
-    if(samples[idxA] && samples[idxB]){
-      var dt = samples[idxA].t - samples[idxB].t;
-      // Accept intervals matching 35–200 BPM range
-      if(dt > 300 && dt < 1714) intervals.push(dt);
+  // 4. Autocorrelation to find the dominant period
+  // Search lag range = 35–200 BPM → in samples
+  var lagMin = Math.round(fps * 60/200); // max BPM → min lag
+  var lagMax = Math.round(fps * 60/35);  // min BPM → max lag
+  lagMin = Math.max(2, lagMin);
+  lagMax = Math.min(band.length - 1, lagMax);
+  if(lagMin >= lagMax) return 0;
+
+  var bestLag = -1, bestCorr = -Infinity;
+  for(var lag=lagMin; lag<=lagMax; lag++){
+    var corr=0, cnt=0;
+    for(var i=0; i<band.length-lag; i++){
+      corr += band[i] * band[i+lag];
+      cnt++;
     }
+    corr /= cnt;
+    if(corr > bestCorr){ bestCorr=corr; bestLag=lag; }
   }
-  if(intervals.length < 2) return 0;
+  if(bestLag < 1 || bestCorr <= 0) return 0;
 
-  // Remove outliers: keep intervals within 30% of median
-  intervals.sort(function(a,b){return a-b;});
-  var median = intervals[Math.floor(intervals.length/2)];
-  var clean = intervals.filter(function(d){ return Math.abs(d-median)/median < 0.30; });
-  if(clean.length < 2) return 0;
+  // 5. Refine: find local max near bestLag (±2 samples)
+  var refined = bestLag;
+  for(var lag=Math.max(lagMin,bestLag-2); lag<=Math.min(lagMax,bestLag+2); lag++){
+    var corr=0,cnt=0;
+    for(var i=0;i<band.length-lag;i++){corr+=band[i]*band[i+lag];cnt++;}
+    corr/=cnt;
+    if(corr>bestCorr){bestCorr=corr;refined=lag;}
+  }
 
-  var avgInt = clean.reduce(function(a,b){return a+b;},0)/clean.length;
-  var bpm = Math.round(60000/avgInt);
-  return (bpm >= 35 && bpm <= 200) ? bpm : 0;
+  var periodMs = (refined / fps) * 1000;
+  var bpm = Math.round(60000 / periodMs);
+  return (bpm >= 38 && bpm <= 200) ? bpm : 0;
 }
 
 function hbDrawWave() {
