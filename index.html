@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Apex Crown Cap ERP - Telegram Mini App</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Telegram WebApp JS SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            tg: {
+              bg: 'var(--tg-theme-bg-color, #0f172a)',
+              card: 'var(--tg-theme-secondary-bg-color, #1e293b)',
+              text: 'var(--tg-theme-text-color, #f8fafc)',
+              hint: 'var(--tg-theme-hint-color, #94a3b8)',
+              link: 'var(--tg-theme-link-color, #38bdf8)',
+              button: 'var(--tg-theme-button-color, #0284c7)',
+              buttonText: 'var(--tg-theme-button-text-color, #ffffff)'
+            },
+            apex: {
+              gold: '#f59e0b',
+              blue: '#0284c7',
+              red: '#ef4444',
+              green: '#10b981',
+              dark: '#090d16'
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      background-color: var(--tg-theme-bg-color, #0f172a);
+      color: var(--tg-theme-text-color, #f8fafc);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+
+    .pulse-glow-green {
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+    }
+    .pulse-glow-red {
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+    }
+    .pulse-glow-yellow {
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+    }
+  </style>
+</head>
+<body class="pb-24 select-none antialiased min-h-screen">
+
+  <!-- APP CONTAINER -->
+  <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col relative">
+
+    <!-- TELEGRAM TOP HEADER BAR -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 p-3 sticky top-0 z-40 flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 font-black text-lg shadow-md">
+          <i class="fa-solid fa-crown"></i>
+        </div>
+        <div>
+          <h1 class="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
+            APEX CROWN CAP <span class="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">LINE 1</span>
+          </h1>
+          <p class="text-[11px] text-slate-400 flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"></span> 
+            Telemetry Live • <span id="tg-user-name">Operator</span>
+          </p>
+        </div>
+      </div>
+      <button onclick="toggleQuickActionModal()" class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 flex items-center justify-center transition border border-amber-500/20">
+        <i class="fa-solid fa-plus"></i>
+      </button>
+    </header>
+
+    <!-- LIVE PLANT STATUS BAR -->
+    <section class="bg-slate-800/80 border-b border-slate-700/60 px-3 py-2 flex items-center justify-between text-xs">
+      <div class="flex items-center gap-2">
+        <span class="font-semibold text-slate-300">LINE STATUS:</span>
+        <span id="line-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 pulse-glow-green">
+          RUNNING
+        </span>
+      </div>
+      <div class="text-slate-400 text-[11px] font-mono" id="current-shift-time">
+        Shift A • 06:42 elapsed
+      </div>
+    </section>
+
+    <!-- MAIN CONTENT AREA WITH TABS -->
+    <main class="flex-1 p-3 space-y-4">
+
+      <!-- TAB 1: EXECUTIVE TELEMETRY & DASHBOARD -->
+      <div id="tab-dashboard" class="tab-content space-y-3">
+        <!-- KPI METRICS GRID -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <!-- Uptime Card -->
+          <div class="bg-slate-800/70 p-3 rounded-xl border border-slate-700/50 relative overflow-hidden">
+            <div class="flex justify-between items-start">
+              <span class="text-[11px] text-slate-400 font-medium">Line Availability</span>
+              <i class="fa-solid fa-chart-line text-emerald-400 text-xs"></i>
+            </div>
+            <div class="mt-1 flex items-baseline gap-1">
+              <span class="text-2xl font-black text-emerald-400" id="kpi-uptime">92.4%</span>
+              <span class="text-[10px] text-slate-400">/ 95% Target</span>
+            </div>
+            <div class="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-emerald-500 h-full rounded-full" style="width: 92.4%"></div>
+            </div>
+          </div>
+
+          <!-- Downtime Card -->
+          <div class="bg-slate-800/70 p-3 rounded-xl border border-slate-700/50">
+            <div class="flex justify-between items-start">
+              <span class="text-[11px] text-slate-400 font-medium">Shift Downtime</span>
+              <i class="fa-solid fa-clock-rotate-left text-amber-400 text-xs"></i>
+            </div>
+            <div class="mt-1 flex items-baseline gap-1">
+              <span class="text-2xl font-black text-amber-400" id="kpi-downtime">36m</span>
+              <span class="text-[10px] text-slate-400">2 Incidents</span>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-2 truncate">Last: PMC300 Feeder Jam</p>
+          </div>
+
+          <!-- MTBF Card -->
+          <div class="bg-slate-800/70 p-3 rounded-xl border border-slate-700/50">
+            <div class="flex justify-between items-start">
+              <span class="text-[11px] text-slate-400 font-medium">MTBF (Mean Time)</span>
+              <i class="fa-solid fa-shield-halved text-sky-400 text-xs"></i>
+            </div>
+            <div class="mt-1 flex items-baseline gap-1">
+              <span class="text-2xl font-black text-sky-400" id="kpi-mtbf">14.2h</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-2">Target: &gt; 12.0h</p>
+          </div>
+
+          <!-- MTTR Card -->
+          <div class="bg-slate-800/70 p-3 rounded-xl border border-slate-700/50">
+            <div class="flex justify-between items-start">
+              <span class="text-[11px] text-slate-400 font-medium">MTTR (Repair Time)</span>
+              <i class="fa-solid fa-wrench text-rose-400 text-xs"></i>
+            </div>
+            <div class="mt-1 flex items-baseline gap-1">
+              <span class="text-2xl font-black text-rose-400" id="kpi-mttr">18m</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-2">Target: &lt; 25m</p>
+          </div>
+        </div>
+
+        <!-- LINE PRODUCTION SUMMARY CARD -->
+        <div class="bg-gradient-to-r from-slate-800 to-slate-900 p-3.5 rounded-xl border border-slate-700/80 shadow-md">
+          <div class="flex items-center justify-between border-b border-slate-700/60 pb-2 mb-2.5">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-industry text-amber-400"></i>
+              <h2 class="text-xs font-bold text-slate-200">Current Shift Yield (Crown Caps)</h2>
+            </div>
+            <span class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full font-mono">2,850 CPM Rate</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-center my-2">
+            <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+              <p class="text-[10px] text-slate-400">Output</p>
+              <p class="text-base font-bold text-white font-mono" id="summary-output">1,026,000</p>
+              <p class="text-[9px] text-slate-500">712 Boxes</p>
+            </div>
+            <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+              <p class="text-[10px] text-slate-400">Scrap Rate</p>
+              <p class="text-base font-bold text-rose-400 font-mono" id="summary-scrap">0.82%</p>
+              <p class="text-[9px] text-slate-500">8,470 pcs</p>
+            </div>
+            <div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+              <p class="text-[10px] text-slate-400">TFS Steel Sheets</p>
+              <p class="text-base font-bold text-amber-400 font-mono">360 / 400</p>
+              <p class="text-[9px] text-slate-500">Pallet #42</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TECHNICAL TEAM KPI SCORECARD -->
+        <div class="bg-slate-800/70 p-3.5 rounded-xl border border-slate-700/50">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-user-gear text-sky-400"></i> Technical Team KPIs (This Month)
+            </h2>
+            <span class="text-[10px] text-sky-400 font-medium">5 Active Techs</span>
+          </div>
+          <div class="space-y-2.5">
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span class="text-slate-300">PM On-Time Completion Rate</span>
+                <span class="font-bold text-emerald-400">96.8%</span>
+              </div>
+              <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                <div class="bg-emerald-500 h-full rounded-full" style="width: 96.8%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-1">
+                <span class="text-slate-300">Emergency Work Orders Handled</span>
+                <span class="font-bold text-amber-400">4 Closed / 0 Pending</span>
+              </div>
+              <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                <div class="bg-amber-500 h-full rounded-full" style="width: 100%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: TECHNICAL & MAINTENANCE -->
+      <div id="tab-technical" class="tab-content hidden space-y-3">
+        <!-- MACHINERY HEALTH CAROUSEL/LIST -->
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-cubes text-amber-400"></i> Line 1 Equipment Health (7 Units)
+          </h2>
+          <button onclick="triggerSimulationTick()" class="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded hover:bg-sky-500/20 transition">
+            <i class="fa-solid fa-forwardStep"></i> +50h Sim Run
+          </button>
+        </div>
+
+        <div id="machinery-list" class="space-y-2">
+          <!-- Dynamically generated via JS -->
+        </div>
+
+        <!-- WORK ORDER MANAGEMENT SECTION -->
+        <div class="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/70 mt-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-xs font-bold text-white flex items-center gap-1.5">
+                <i class="fa-solid fa-clipboard-list text-amber-400"></i> Active Work Orders & PMs
+              </h3>
+              <p class="text-[10px] text-slate-400">Auto-triggered by runtime & manual reports</p>
+            </div>
+            <button onclick="openCreateWorkOrderModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-2.5 py-1 rounded-lg text-xs shadow-md transition flex items-center gap-1">
+              <i class="fa-solid fa-plus text-[10px]"></i> New WO
+            </button>
+          </div>
+
+          <div id="work-orders-list" class="space-y-2">
+            <!-- Dynamically populated via JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: PRODUCTION DEPARTMENT -->
+      <div id="tab-production" class="tab-content hidden space-y-3">
+        <!-- SHIFT LOGGING CONTROL -->
+        <div class="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/70">
+          <div class="flex justify-between items-center mb-2.5">
+            <h3 class="text-xs font-bold text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-boxes-packing text-amber-400"></i> Shift Hourly Production Entry
+            </h3>
+            <span class="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-amber-300 font-mono">PMC300 Line</span>
+          </div>
+
+          <form id="form-production-entry" onsubmit="handleProductionSubmit(event)" class="space-y-2.5 text-xs">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-slate-400 mb-1 text-[11px]">Shift Output (Crown Caps)</label>
+                <input type="number" id="prod-output-input" placeholder="e.g. 150000" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:border-amber-500 focus:outline-none" required>
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1 text-[11px]">Scrap / Rejects (Pcs)</label>
+                <input type="number" id="prod-scrap-input" placeholder="e.g. 1200" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:border-amber-500 focus:outline-none" required>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-slate-400 mb-1 text-[11px]">Raw Material TFS Sheets</label>
+                <input type="number" id="prod-tfs-input" placeholder="Used Sheets" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:border-amber-500 focus:outline-none">
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-1 text-[11px]">PVC-Free Compound (kg)</label>
+                <input type="number" step="0.1" id="prod-compound-input" placeholder="kg used" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono focus:border-amber-500 focus:outline-none">
+              </div>
+            </div>
+
+            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg transition text-xs shadow-md mt-1">
+              <i class="fa-solid fa-check-double mr-1"></i> Log Shift Output & Update Stats
+            </button>
+          </form>
+        </div>
+
+        <!-- DOWNTIME & NON-WORKING HOURS LOG -->
+        <div class="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/70 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-stopwatch text-rose-400"></i> Downtime & Reason Logger
+            </h3>
+            <button onclick="toggleDowntimeModal()" class="text-[11px] bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded hover:bg-rose-500/30">
+              <i class="fa-solid fa-bug"></i> Log Incident
+            </button>
+          </div>
+
+          <div id="downtime-logs-list" class="space-y-2">
+            <!-- Dynamically Populated -->
+          </div>
+        </div>
+
+        <!-- OPERATOR ASSIGNMENT MATRIX -->
+        <div class="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700/70">
+          <h3 class="text-xs font-bold text-white mb-2.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-users text-sky-400"></i> Assigned Shift Crew
+          </h3>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="bg-slate-900/70 p-2 rounded border border-slate-800 flex items-center gap-2">
+              <div class="w-7 h-7 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-xs">OP</div>
+              <div>
+                <p class="font-bold text-slate-200 text-[11px]">Dawit T. (Lead)</p>
+                <p class="text-[10px] text-slate-500">PMC300 Main Operator</p>
+              </div>
+            </div>
+            <div class="bg-slate-900/70 p-2 rounded border border-slate-800 flex items-center gap-2">
+              <div class="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">TC</div>
+              <div>
+                <p class="font-bold text-slate-200 text-[11px]">Abebe K.</p>
+                <p class="text-[10px] text-slate-500">Chief Technician</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: SPARE PARTS INVENTORY -->
+      <div id="tab-inventory" class="tab-content hidden space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-warehouse text-amber-400"></i> Spare Parts Stock & Consumption
+          </h2>
+          <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Plant Sync OK</span>
+        </div>
+
+        <!-- SEARCH / FILTER -->
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+          <input type="text" id="inventory-search" onkeyup="filterInventory()" placeholder="Search spares by name, machine or part #..." class="w-full bg-slate-800 border border-slate-700/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500">
+        </div>
+
+        <!-- INVENTORY TABLE / LIST -->
+        <div id="inventory-list" class="space-y-2">
+          <!-- Dynamically Populated -->
+        </div>
+      </div>
+
+    </main>
+
+    <!-- BOTTOM NAVIGATION TABS -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 z-40 flex justify-around p-1.5 text-center">
+      <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn active flex-1 py-1 text-amber-400 flex flex-col items-center gap-0.5">
+        <i class="fa-solid fa-gauge-high text-base"></i>
+        <span class="text-[10px] font-medium">KPIs</span>
+      </button>
+      <button onclick="switchTab('technical')" id="nav-technical" class="nav-btn flex-1 py-1 text-slate-500 hover:text-slate-300 flex flex-col items-center gap-0.5">
+        <i class="fa-solid fa-wrench text-base"></i>
+        <span class="text-[10px] font-medium">Technical</span>
+      </button>
+      <button onclick="switchTab('production')" id="nav-production" class="nav-btn flex-1 py-1 text-slate-500 hover:text-slate-300 flex flex-col items-center gap-0.5">
+        <i class="fa-solid fa-industry text-base"></i>
+        <span class="text-[10px] font-medium">Production</span>
+      </button>
+      <button onclick="switchTab('inventory')" id="nav-inventory" class="nav-btn flex-1 py-1 text-slate-500 hover:text-slate-300 flex flex-col items-center gap-0.5">
+        <i class="fa-solid fa-boxes-stacked text-base"></i>
+        <span class="text-[10px] font-medium">Spares</span>
+      </button>
+    </nav>
+
+    <!-- MODAL: CREATE WORK ORDER -->
+    <div id="modal-wo" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-3 shadow-2xl animate-in slide-in-from-bottom duration-200">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-triangle-exclamation text-amber-400"></i> Dispatch Work Order
+          </h3>
+          <button onclick="closeModal('modal-wo')" class="text-slate-400 hover:text-white p-1">
+            <i class="fa-solid fa-xmark text-base"></i>
+          </button>
+        </div>
+
+        <form id="form-create-wo" onsubmit="handleWorkOrderSubmit(event)" class="space-y-3 text-xs">
+          <div>
+            <label class="block text-slate-400 mb-1">Target Machine</label>
+            <select id="wo-machine-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-amber-500">
+              <option value="PMC300">PMC300 (Crown Cap Press & Lining)</option>
+              <option value="PTC027">PTC027 (Sacmi Sheet Printing/Press)</option>
+              <option value="Transformer">Transformer (Power Distribution)</option>
+              <option value="Mainboard">Mainboard (Electrical Panel)</option>
+              <option value="Compressor">Air Compressor Utility</option>
+              <option value="Chiller">Industrial Chiller Unit</option>
+              <option value="Conveyor">Finished Product Conveyor System</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-slate-400 mb-1">Priority Level</label>
+            <select id="wo-priority-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-amber-500">
+              <option value="Low">Low - Normal Inspection</option>
+              <option value="Medium" selected>Medium - Minor Issue / Standard PM</option>
+              <option value="High">High - Breakdown / Production Delay</option>
+              <option value="Emergency">Emergency - Line Stopped</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-slate-400 mb-1">Task / Defect Description</label>
+            <textarea id="wo-desc-input" rows="2" placeholder="Describe the anomaly or PMX task..." class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-amber-500" required></textarea>
+          </div>
+
+          <div>
+            <label class="block text-slate-400 mb-1">Assigned Lead Technician</label>
+            <select id="wo-tech-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-amber-500">
+              <option value="Abebe K. (Chief Tech)">Abebe K. (Chief Tech)</option>
+              <option value="Mulugeta T. (Electrical)">Mulugeta T. (Electrical)</option>
+              <option value="Yonas B. (Mechanical)">Yonas B. (Mechanical)</option>
+            </select>
+          </div>
+
+          <div class="pt-2 flex gap-2">
+            <button type="button" onclick="closeModal('modal-wo')" class="flex-1 bg-slate-800 text-slate-300 font-medium py-2 rounded-lg">Cancel</button>
+            <button type="submit" class="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 rounded-lg">Create Order</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: DOWNTIME LOGGING -->
+    <div id="modal-downtime" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-3 hidden">
+      <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-3 shadow-2xl">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-clock text-rose-400"></i> Log Non-Working Hours
+          </h3>
+          <button onclick="closeModal('modal-downtime')" class="text-slate-400 hover:text-white p-1">
+            <i class="fa-solid fa-xmark text-base"></i>
+          </button>
+        </div>
+
+        <form id="form-downtime-entry" onsubmit="handleDowntimeSubmit(event)" class="space-y-3 text-xs">
+          <div>
+            <label class="block text-slate-400 mb-1">Downtime Reason Code</label>
+            <select id="dt-reason-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-amber-500">
+              <option value="Machine Breakdown (PMX/Mechanical)">Machine Breakdown (PMX/Mechanical)</option>
+              <option value="Electrical / Mainboard Fault">Electrical / Mainboard Fault</option>
+              <option value="No TFS Steel Sheet Input">No TFS Steel Sheet Input</option>
+              <option value="Power Outage / Transformer">Power Outage / Transformer</option>
+              <option value="Die Swap / Changeover">Die Swap / Changeover</option>
+              <option value="Chiller / Air Pressure Drop">Chiller / Air Pressure Drop</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-slate-400 mb-1">Duration (Minutes)</label>
+              <input type="number" id="dt-duration-input" placeholder="e.g. 25" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none" required>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Machine</label>
+              <select id="dt-machine-select" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none">
+                <option value="PMC300">PMC300</option>
+                <option value="PTC027">PTC027</option>
+                <option value="Compressor">Compressor</option>
+                <option value="Chiller">Chiller</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-slate-400 mb-1">Corrective Action Taken</label>
+            <input type="text" id="dt-action-input" placeholder="Brief note on repair..." class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white focus:outline-none" required>
+          </div>
+
+          <div class="pt-2 flex gap-2">
+            <button type="button" onclick="closeModal('modal-downtime')" class="flex-1 bg-slate-800 text-slate-300 font-medium py-2 rounded-lg">Cancel</button>
+            <button type="submit" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 rounded-lg">Log Incident</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold shadow-2xl transition-all duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+      <i class="fa-solid fa-circle-check"></i> <span id="toast-msg">Action Completed</span>
+    </div>
+
+  </div>
+
+  <script>
+    // --- TELEGRAM WEB APP INTEGRATION ---
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.expand();
+      tg.ready();
+      if (tg.initDataUnsafe?.user) {
+        document.getElementById('tg-user-name').innerText = tg.initDataUnsafe.user.first_name || "Operator";
+      }
+    }
+
+    // --- ERP IN-MEMORY DATA STORE ---
+    const appState = {
+      lineStatus: 'RUNNING', // RUNNING, DOWN, CHANGEOVER
+      shiftOutput: 1026000,
+      shiftScrap: 8470,
+      totalDowntimeMin: 36,
+      mtbfHours: 14.2,
+      mttrMin: 18,
+
+      // 7 Machinery Units with Runtime & Maintenance Schedule (PMC300 specifically detailed)
+      machinery: [
+        {
+          id: 'PMC300',
+          name: 'PMC300 Crown Cap Press & Lining',
+          status: 'RUNNING',
+          runtime: 4290, // Hours
+          pmInterval: 4320, // Next major PMX milestone (8h, 180h, 360h, 720h, 1440h, 2160h, 4320h, 8640h)
+          health: 94,
+          icon: 'fa-crown',
+          desc: 'Sacmi Crown Cap Forming, Punching & PVC-Free Liner Applicator'
+        },
+        {
+          id: 'PTC027',
+          name: 'PTC027 Sheet Printing & Coater',
+          status: 'RUNNING',
+          runtime: 2110,
+          pmInterval: 2160,
+          health: 91,
+          icon: 'fa-print',
+          desc: 'TFS Sheet Decoration & Varnish Coating Line'
+        },
+        {
+          id: 'Transformer',
+          name: 'Main Electrical Transformer',
+          status: 'RUNNING',
+          runtime: 8400,
+          pmInterval: 8640,
+          health: 98,
+          icon: 'fa-bolt',
+          desc: '11kV/400V Substation Distribution'
+        },
+        {
+          id: 'Mainboard',
+          name: 'Main Electrical Distribution Panel',
+          status: 'RUNNING',
+          runtime: 5120,
+          pmInterval: 6000,
+          health: 96,
+          icon: 'fa-network-wired',
+          desc: 'PLC & VFD Control Cabinets'
+        },
+        {
+          id: 'Compressor',
+          name: 'High-Pressure Air Compressor',
+          status: 'RUNNING',
+          runtime: 1410,
+          pmInterval: 1440,
+          health: 88,
+          icon: 'fa-wind',
+          desc: '7.5 Bar Pneumatic Utility for Punching'
+        },
+        {
+          id: 'Chiller',
+          name: 'Industrial Process Chiller',
+          status: 'RUNNING',
+          runtime: 710,
+          pmInterval: 720,
+          health: 82,
+          icon: 'fa-snowflake',
+          desc: 'Chilled Water Loop for Die Cooling'
+        },
+        {
+          id: 'Conveyor',
+          name: 'Finished Product Conveyor & Vision Inspection',
+          status: 'RUNNING',
+          runtime: 320,
+          pmInterval: 500,
+          health: 99,
+          icon: 'fa-conveyor-belt',
+          desc: 'Automatic Counting & Carton Filling'
+        }
+      ],
+
+      // Work Orders
+      workOrders: [
+        {
+          id: 'WO-1092',
+          machine: 'PMC300',
+          type: 'PMX Task',
+          title: 'PMC300 4320h Major Liner Injector & Die Overhaul',
+          priority: 'High',
+          status: 'Pending',
+          tech: 'Abebe K. (Chief Tech)',
+          time: 'Due in 30 hrs'
+        },
+        {
+          id: 'WO-1088',
+          machine: 'Chiller',
+          type: 'Corrective',
+          title: 'Chiller Coolant Filter Replacement',
+          priority: 'Medium',
+          status: 'In Progress',
+          tech: 'Yonas B.',
+          time: 'Started 1h ago'
+        }
+      ],
+
+      // Downtime Logs
+      downtimeLogs: [
+        {
+          id: 1,
+          time: '08:15 AM',
+          machine: 'PMC300',
+          reason: 'Feeder Jam / Liner Misalignment',
+          duration: '22 min',
+          action: 'Cleared cap jam and recalibrated optical sensor'
+        },
+        {
+          id: 2,
+          time: '11:30 AM',
+          machine: 'Compressor',
+          reason: 'Pneumatic Pressure Drop',
+          duration: '14 min',
+          action: 'Drained condensation valves & reset pressure switch'
+        }
+      ],
+
+      // Spare Parts Inventory
+      inventory: [
+        { id: 'SP-001', name: 'PMC300 Liner Injection Nozzle', machine: 'PMC300', qty: 12, min: 5, unit: 'pcs', rate: '2 / month' },
+        { id: 'SP-002', name: 'Punching Die Set (27mm Cap)', machine: 'PMC300', qty: 3, min: 2, unit: 'sets', rate: '0.5 / month' },
+        { id: 'SP-003', name: 'TFS Sheet Feeder Vacuum Cups', machine: 'PTC027', qty: 45, min: 20, unit: 'pcs', rate: '10 / month' },
+        { id: 'SP-004', name: 'Chiller Refrigerant R410A', machine: 'Chiller', qty: 2, min: 4, unit: 'cylinders', rate: '1 / month', alert: true },
+        { id: 'SP-005', name: 'Air Compressor Intake Filter Element', machine: 'Compressor', qty: 4, min: 3, unit: 'pcs', rate: '1 / month' },
+        { id: 'SP-006', name: 'Mainboard VFD Fuse 100A', machine: 'Mainboard', qty: 8, min: 5, unit: 'pcs', rate: '0.2 / month' }
+      ]
+    };
+
+    // --- TAB SWITCHING LOGIC ---
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('text-amber-400', 'active');
+        btn.classList.add('text-slate-500');
+      });
+
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      const activeNav = document.getElementById(`nav-${tabId}`);
+      activeNav.classList.remove('text-slate-500');
+      activeNav.classList.add('text-amber-400', 'active');
+    }
+
+    // --- RENDER MACHINERY HEALTH ---
+    function renderMachinery() {
+      const container = document.getElementById('machinery-list');
+      container.innerHTML = '';
+
+      appState.machinery.forEach(item => {
+        const hoursLeft = item.pmInterval - item.runtime;
+        const progressPct = Math.min(100, Math.round((item.runtime / item.pmInterval) * 100));
+        
+        let statusBadge = item.status === 'RUNNING' 
+          ? `<span class="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold">RUNNING</span>`
+          : `<span class="text-[9px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded font-bold">MAINTENANCE</span>`;
+
+        let alertClass = hoursLeft <= 50 ? 'border-amber-500/60 bg-amber-950/10' : 'border-slate-800 bg-slate-800/60';
+
+        container.innerHTML += `
+          <div class="p-3 rounded-xl border ${alertClass} transition hover:border-slate-700">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-amber-400 text-sm">
+                  <i class="fa-solid ${item.icon}"></i>
+                </div>
+                <div>
+                  <h4 class="text-xs font-bold text-slate-100">${item.name}</h4>
+                  <p class="text-[10px] text-slate-400">${item.desc}</p>
+                </div>
+              </div>
+              ${statusBadge}
+            </div>
+
+            <div class="mt-2.5 grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-slate-800/80">
+              <div>
+                <span class="text-slate-400">Runtime:</span>
+                <span class="font-mono text-slate-200 font-bold">${item.runtime} hrs</span>
+              </div>
+              <div class="text-right">
+                <span class="text-slate-400">PM Threshold:</span>
+                <span class="font-mono text-amber-400 font-bold">${item.pmInterval} hrs</span>
+              </div>
+            </div>
+
+            <div class="mt-1.5">
+              <div class="flex justify-between text-[9px] text-slate-400 mb-0.5">
+                <span>PM Interval Usage (${progressPct}%)</span>
+                <span class="${hoursLeft <= 50 ? 'text-amber-400 font-bold' : 'text-slate-400'}">${hoursLeft}h until next PM</span>
+              </div>
+              <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                <div class="${hoursLeft <= 50 ? 'bg-amber-500' : 'bg-sky-500'} h-full rounded-full" style="width: ${progressPct}%"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    // --- RENDER WORK ORDERS ---
+    function renderWorkOrders() {
+      const container = document.getElementById('work-orders-list');
+      container.innerHTML = '';
+
+      if (appState.workOrders.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 py-2 text-center">No active work orders</p>`;
+        return;
+      }
+
+      appState.workOrders.forEach(wo => {
+        let badgeColor = 'bg-sky-500/20 text-sky-400';
+        if (wo.priority === 'High' || wo.priority === 'Emergency') badgeColor = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+
+        container.innerHTML += `
+          <div class="p-2.5 bg-slate-900/80 rounded-lg border border-slate-800 flex items-start justify-between gap-2">
+            <div class="space-y-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${badgeColor}">${wo.priority}</span>
+                <span class="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-mono">${wo.id}</span>
+                <span class="text-[10px] text-amber-400 font-semibold">${wo.machine}</span>
+              </div>
+              <p class="text-xs font-medium text-slate-200">${wo.title}</p>
+              <p class="text-[10px] text-slate-400">Assigned to: <span class="text-slate-300 font-medium">${wo.tech}</span> • ${wo.time}</p>
+            </div>
+            <button onclick="confirmCloseWorkOrder('${wo.id}')" class="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 text-[10px] px-2 py-1 rounded transition shrink-0">
+              <i class="fa-solid fa-check"></i> Sign Off
+            </button>
+          </div>
+        `;
+      });
+    }
+
+    // --- RENDER DOWNTIME LOGS ---
+    function renderDowntimeLogs() {
+      const container = document.getElementById('downtime-logs-list');
+      container.innerHTML = '';
+
+      appState.downtimeLogs.forEach(log => {
+        container.innerHTML += `
+          <div class="p-2.5 bg-slate-900/80 rounded-lg border border-slate-800 space-y-1 text-xs">
+            <div class="flex justify-between items-center">
+              <div class="flex items-center gap-1.5">
+                <span class="text-rose-400 font-bold font-mono text-[11px]">${log.time}</span>
+                <span class="bg-slate-800 text-slate-300 text-[10px] px-1.5 py-0.5 rounded">${log.machine}</span>
+              </div>
+              <span class="text-amber-400 font-mono font-bold text-[10px]">${log.duration} downtime</span>
+            </div>
+            <p class="text-slate-200 font-medium">${log.reason}</p>
+            <p class="text-[10px] text-slate-400 italic">Action: ${log.action}</p>
+          </div>
+        `;
+      });
+    }
+
+    // --- RENDER SPARE PARTS INVENTORY ---
+    function renderInventory(filterText = '') {
+      const container = document.getElementById('inventory-list');
+      container.innerHTML = '';
+
+      const filtered = appState.inventory.filter(item => 
+        item.name.toLowerCase().includes(filterText.toLowerCase()) || 
+        item.machine.toLowerCase().includes(filterText.toLowerCase()) ||
+        item.id.toLowerCase().includes(filterText.toLowerCase())
+      );
+
+      filtered.forEach(item => {
+        const isLow = item.qty <= item.min;
+        container.innerHTML += `
+          <div class="p-3 bg-slate-800/70 rounded-xl border ${isLow ? 'border-rose-500/50 bg-rose-950/10' : 'border-slate-700/60'} flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] font-mono text-slate-400">${item.id}</span>
+                <span class="text-[10px] bg-slate-700 text-amber-300 px-1.5 py-0.5 rounded">${item.machine}</span>
+                ${isLow ? '<span class="text-[9px] bg-rose-500 text-white px-1.5 py-0.2 rounded font-bold">REORDER</span>' : ''}
+              </div>
+              <h4 class="text-xs font-bold text-slate-100 mt-0.5">${item.name}</h4>
+              <p class="text-[10px] text-slate-400">Consumption: ${item.rate}</p>
+            </div>
+
+            <div class="text-right">
+              <p class="text-base font-black font-mono ${isLow ? 'text-rose-400' : 'text-emerald-400'}">${item.qty} <span class="text-[10px] font-normal text-slate-400">${item.unit}</span></p>
+              <p class="text-[9px] text-slate-500">Min Stock: ${item.min}</p>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function filterInventory() {
+      const val = document.getElementById('inventory-search').value;
+      renderInventory(val);
+    }
+
+    // --- SIMULATION & ACTIONS ---
+    function triggerSimulationTick() {
+      // Increment runtime of PMC300 & Chiller to demonstrate auto PM workorder trigger
+      const pmc = appState.machinery.find(m => m.id === 'PMC300');
+      pmc.runtime += 50;
+
+      if (pmc.runtime >= pmc.pmInterval) {
+        // Auto trigger PM Work order
+        appState.workOrders.unshift({
+          id: `WO-PMX-${Math.floor(1000 + Math.random() * 9000)}`,
+          machine: 'PMC300',
+          type: 'PMX Task',
+          title: `PMC300 ${pmc.pmInterval}h Mandatory Preventive Maintenance Overhaul`,
+          priority: 'High',
+          status: 'Pending',
+          tech: 'Abebe K. (Chief Tech)',
+          time: 'Auto-Triggered Just Now'
+        });
+        showToast("PM Threshold Passed! Auto Work Order Created.");
+      } else {
+        showToast("+50 Runtime Hours Added to Machines");
+      }
+
+      renderMachinery();
+      renderWorkOrders();
+    }
+
+    function handleProductionSubmit(e) {
+      e.preventDefault();
+      const output = parseInt(document.getElementById('prod-output-input').value) || 0;
+      const scrap = parseInt(document.getElementById('prod-scrap-input').value) || 0;
+
+      appState.shiftOutput += output;
+      appState.shiftScrap += scrap;
+
+      // Update KPI
+      document.getElementById('summary-output').innerText = appState.shiftOutput.toLocaleString();
+      const scrapPct = ((appState.shiftScrap / appState.shiftOutput) * 100).toFixed(2);
+      document.getElementById('summary-scrap').innerText = `${scrapPct}%`;
+
+      showToast("Shift Production Output Logged!");
+      document.getElementById('form-production-entry').reset();
+    }
+
+    function handleWorkOrderSubmit(e) {
+      e.preventDefault();
+      const machine = document.getElementById('wo-machine-select').value;
+      const priority = document.getElementById('wo-priority-select').value;
+      const desc = document.getElementById('wo-desc-input').value;
+      const tech = document.getElementById('wo-tech-select').value;
+
+      const newWO = {
+        id: `WO-${Math.floor(1000 + Math.random() * 9000)}`,
+        machine: machine,
+        type: 'Corrective',
+        title: desc,
+        priority: priority,
+        status: 'Pending',
+        tech: tech,
+        time: 'Created Just Now'
+      };
+
+      appState.workOrders.unshift(newWO);
+      renderWorkOrders();
+      closeModal('modal-wo');
+      showToast("Work Order Dispatched to Technician!");
+      document.getElementById('form-create-wo').reset();
+    }
+
+    function handleDowntimeSubmit(e) {
+      e.preventDefault();
+      const reason = document.getElementById('dt-reason-select').value;
+      const duration = document.getElementById('dt-duration-input').value;
+      const machine = document.getElementById('dt-machine-select').value;
+      const action = document.getElementById('dt-action-input').value;
+
+      appState.downtimeLogs.unshift({
+        id: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        machine: machine,
+        reason: reason,
+        duration: `${duration} min`,
+        action: action
+      });
+
+      appState.totalDowntimeMin += parseInt(duration);
+      document.getElementById('kpi-downtime').innerText = `${appState.totalDowntimeMin}m`;
+
+      renderDowntimeLogs();
+      closeModal('modal-downtime');
+      showToast("Downtime Incident Logged");
+      document.getElementById('form-downtime-entry').reset();
+    }
+
+    function confirmCloseWorkOrder(woId) {
+      appState.workOrders = appState.workOrders.filter(w => w.id !== woId);
+      renderWorkOrders();
+      showToast(`Work Order ${woId} Signed Off & Closed!`);
+    }
+
+    // --- MODAL UTILS ---
+    function openCreateWorkOrderModal() {
+      document.getElementById('modal-wo').classList.remove('hidden');
+    }
+    function toggleDowntimeModal() {
+      document.getElementById('modal-downtime').classList.remove('hidden');
+    }
+    function toggleQuickActionModal() {
+      openCreateWorkOrderModal();
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    // --- TOAST UTILS ---
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').innerText = msg;
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 2500);
+    }
+
+    // --- INIT APP ON LOAD ---
+    window.onload = function() {
+      renderMachinery();
+      renderWorkOrders();
+      renderDowntimeLogs();
+      renderInventory();
+    };
+  </script>
+</body>
+</html>
